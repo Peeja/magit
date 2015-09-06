@@ -2311,24 +2311,31 @@ When the region is active, then behave like `kill-ring-save'."
   (interactive)
   (if (region-active-p)
       (copy-region-as-kill (mark) (point) 'region)
-    (--when-let (cond ((derived-mode-p 'magit-revision-mode)
-                       (magit-rev-parse (car magit-refresh-args)))
-                      ((derived-mode-p 'magit-diff-mode
-                                       'magit-cherry-mode
-                                       'magit-reflog-mode
-                                       'magit-refs-mode
-                                       'magit-stash-mode)
-                       (car magit-refresh-args))
-                      ((derived-mode-p 'magit-log-mode)
-                       (if magit-log-select-pick-function
-                           (car magit-refresh-args)
-                         (cadr magit-refresh-args)))
-                      ((derived-mode-p 'magit-status-mode)
-                       (or (magit-get-current-branch) "HEAD"))
-                      ((derived-mode-p 'magit-stashes-mode)
-                       "refs/stash")
-                      (t (magit-copy-section-value)))
-      (kill-new (message "%s" it)))))
+    (let (value branch)
+      (cond ((derived-mode-p 'magit-revision-mode)
+             (setq value (magit-rev-parse (car magit-refresh-args))))
+            ((derived-mode-p 'magit-diff-mode
+                             'magit-cherry-mode
+                             'magit-reflog-mode
+                             'magit-refs-mode
+                             'magit-stash-mode)
+             (setq value (car magit-refresh-args)))
+            ((derived-mode-p 'magit-log-mode)
+             (setq value (if magit-log-select-pick-function
+                             (car magit-refresh-args)
+                           (cadr magit-refresh-args)))
+             (when (and current-prefix-arg (magit-branch-p value))
+               (setq branch value)))
+            ((derived-mode-p 'magit-status-mode)
+             (setq value (magit-rev-parse "HEAD"))
+             (when current-prefix-arg
+               (setq branch (magit-get-current-branch))))
+            ((derived-mode-p 'magit-stashes-mode)
+             (setq value "refs/stash"))
+            (t
+             (magit-copy-section-value)))
+      (when value
+        (kill-new (message "%s" (or branch value)))))))
 
 ;;; magit.el ends soon
 
