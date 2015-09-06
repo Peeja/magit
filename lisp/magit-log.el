@@ -326,7 +326,12 @@ are no unpulled commits) show."
     :options  ((?f "Limit to files"          "-- "       magit-read-files)
                (?a "Limit to author"         "--author=" read-from-minibuffer)
                (?m "Search messages"         "--grep="   read-from-minibuffer)
-               (?p "Search patches"          "-G"        read-from-minibuffer))
+               (?p "Search patches"          "-G"        read-from-minibuffer)
+               (?L "Trace line evolution"    "-L"        magit-read-file-trace)
+               ;; TODO
+               (?S "Pickaxe search"          "-S"        read-from-minibuffer)
+               ;; (?F "Format"               "--format=" read-from-minibuffer)
+               )
     :actions  ((?l "Log current"             magit-log-current)
                (?L "Log local branches"      magit-log-branches)
                (?r "Reflog current"          magit-reflog-current)
@@ -338,6 +343,14 @@ are no unpulled commits) show."
                (?H "Reflog HEAD"             magit-reflog-head))
     :default-action magit-log-current
     :max-action-columns 3))
+
+(defun magit-read-file-trace (&rest ignored)
+  (let ((file  (magit-read-file-from-rev "HEAD" "File"))
+        (trace (magit-read-string "Trace")))
+    (if (string-match
+         "^\\(/.+/\\|:[^:]+\\|[0-9]+,[-+]?[0-9]+\\)\\(:\\)?$" trace)
+        (concat trace (or (match-string 2 trace) ":") file)
+      (user-error "Trace is invalid, see man git-log"))))
 
 (defvar magit-log-refresh-popup
   '(:variable magit-log-arguments
@@ -545,6 +558,7 @@ completion candidates."
   "Show log for the blob or file visited in the current buffer.
 With a prefix argument or when `--follow' is part of
 `magit-log-arguments', then follow renames."
+  ;; TODO when the region is active add `-L'.
   (interactive "P")
   (-if-let (file (magit-file-relative-name))
       (magit-mode-setup magit-log-buffer-name-format nil
@@ -652,7 +666,7 @@ Type \\[magit-reset] to reset HEAD to the commit at point.
   (hack-dir-local-variables-non-file-buffer))
 
 (defvar magit-log-remove-graph-re
-  (concat "^" (regexp-opt '("-G" "--grep" "--follow")))
+  (concat "^" (regexp-opt '("-G" "--grep" "--follow" "-L")))
   "Regexp matching arguments which are not compatible with `--graph'.")
 
 (defvar magit-log-use-verbose-re
@@ -701,7 +715,7 @@ Do not add this to a hook variable."
       (if (member "--decorate" args)
           (cons "--decorate=full" (remove "--decorate" args))
         args)
-      "--use-mailmap" revs "--" files)))
+      "--use-mailmap" "--no-prefix" revs "--" files)))
 
 (defvar magit-commit-section-map
   (let ((map (make-sparse-keymap)))
@@ -829,7 +843,7 @@ Do not add this to a hook variable."
                 (`bisect-log magit-log-bisect-log-re)))
   (magit-bind-match-strings
       (hash msg refs graph author date gpg cherry refsel refsub side) nil
-    (magit-delete-match)
+    (magit-delete-line)
     (magit-insert-section section (commit hash)
       (pcase style
         (`stash      (setf (magit-section-type section) 'stash))
@@ -857,17 +871,28 @@ Do not add this to a hook variable."
          (magit-reflog-format-subject
           (substring refsub 0 (if (string-match-p ":" refsub) -2 -1)))))
       (when msg
-        (magit-insert msg (pcase (and gpg (aref gpg 0))
-                            (?G 'magit-signature-good)
-                            (?B 'magit-signature-bad)
-                            (?U 'magit-signature-untrusted))))
+        (magit-insert (concat msg "\n")
+                      (or (pcase (and gpg (aref gpg 0))
+                                (?G 'magit-signature-good)
+                                (?B 'magit-signature-bad)
+                                (?U 'magit-signature-untrusted))
+                          (when (--any (string-prefix-p "-L" it)
+                                       (cadr magit-refresh-args))
+                            '(:foreground "gray90" :background "gray60"))))) ; TODO face
       (when (and refs magit-log-show-refname-after-summary)
         (insert ?\s)
         (magit-insert (magit-format-ref-labels refs)))
       (when (memq style '(oneline reflog stash))
         (goto-char (line-beginning-position))
         (magit-format-log-margin author date))
-      (forward-line)))
+      (when (looking-at "^\n")
+        (delete-char 1)
+        (when (and (eq style 'oneline) (looking-at "^diff"))
+          (magit-insert-heading)
+          (when (re-search-forward magit-diff-headline-re nil t)
+            (goto-char (line-beginning-position))
+            (magit-wash-sequence (apply-partially 'magit-diff-wash-diff
+                                                  nil))))))) ; TODO what arguments?
   (when (eq style 'oneline)
     (let ((align (make-string (1+ abbrev) ? )))
       (while (and (not (eobp)) (not (looking-at magit-log-oneline-re)))
@@ -979,11 +1004,12 @@ another window, using `magit-show-commit'."
                                                    (magit-file-relative-name
                                                     magit-buffer-file-name))
                                              (line-number-at-pos)))))
-                   (when (or (and (magit-diff-auto-show-p 'log-follow)
-                                  (magit-mode-get-buffer
-                                   nil 'magit-revision-mode nil nil t))
-                             (and (magit-diff-auto-show-p 'log-oneline)
-                                  (derived-mode-p 'magit-log-mode)))
+                   (when (and (not (magit-section-children it))
+                              (or (and (magit-diff-auto-show-p 'log-follow)
+                                       (magit-mode-get-buffer
+                                        nil 'magit-revision-mode nil nil t))
+                                  (and (magit-diff-auto-show-p 'log-oneline)
+                                       (derived-mode-p 'magit-log-mode))))
                      (apply #'magit-show-commit rev t nil
                             (magit-diff-arguments))))))
              (setq magit-update-other-window-timer nil))))))
