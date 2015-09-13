@@ -229,6 +229,13 @@ variable `magit-process-buffer-name-format'."
          (magit-process-git-arguments args)))
 
 (defun magit-cygwin-noglob-env-vars ()
+  "Return a list of Cygwin \"noglob\" environment variables.
+
+These environment variables prevent Cygwin's git.exe from
+assuming that Magit is a shell and therefore attempting to expand
+glob characters.  They should be added to a let-bound
+`process-environment' non-destructively, e.g. via `push' or
+`append'.  See #2246."
   (mapcar (lambda (var)
             (concat var "=" (--if-let (getenv var)
                                 (concat it " noglob")
