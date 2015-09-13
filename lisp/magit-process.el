@@ -228,6 +228,25 @@ variable `magit-process-buffer-name-format'."
   (apply #'magit-call-process magit-git-executable
          (magit-process-git-arguments args)))
 
+(defmacro magit-with-cygwin-noglob (&rest body)
+  "Add \"noglob\" to the \"CYGWIN\" and \"MSYS\" environment variables.
+See Bug#2246."
+  (declare (indent 0))
+  `(let ((process-environment process-environment))
+     (setenv "CYGWIN" (--if-let (getenv "CYGWIN")
+                          (concat it " noglob")
+                        "noglob"))
+     (setenv "MSYS" (--if-let (getenv "MSYS")
+                        (concat it " noglob")
+                      "noglob"))
+     ,@body))
+
+(defun magit-process-file (&rest args)
+  "Process files synchronously in a separate process.
+Identical to `process-file' but wrap the call with
+`magit-with-cygwin-noglob'."
+  (magit-with-cygwin-noglob (apply #'process-file args)))
+
 (defun magit-call-process (program &rest args)
   "Call PROGRAM synchronously in a separate process.
 Process output goes into a new section in a buffer specified by
@@ -236,7 +255,7 @@ variable `magit-process-buffer-name-format'."
       (magit-process-setup program args)
     (magit-process-finish
      (let ((inhibit-read-only t))
-       (apply #'process-file program nil process-buf nil args))
+       (apply #'magit-process-file program nil process-buf nil args))
      process-buf (current-buffer) default-directory section)))
 
 (defun magit-run-git-with-input (input &rest args)
@@ -376,6 +395,12 @@ See `magit-start-process' for more information."
   (apply #'magit-start-process magit-git-executable input
          (magit-process-git-arguments args)))
 
+(defun magit-start-file-process (&rest args)
+  "Start a program in a subprocess.  Return the process object for it.
+Identical to `start-file-process' but wrap the call with
+`magit-with-cygwin-noglob'."
+  (magit-with-cygwin-noglob (apply #'start-file-process args)))
+
 (defun magit-start-process (program &optional input &rest args)
   "Start PROGRAM, prepare for refresh, and return the process object.
 
@@ -402,7 +427,7 @@ tracked in the current repository are reverted if
             ;; Don't use a pty, because it would set icrnl
             ;; which would modify the input (issue #20).
             (and (not input) magit-process-connection-type))
-           (process (apply #'start-file-process
+           (process (apply #'magit-start-file-process
                            (file-name-nondirectory program)
                            process-buf program args)))
       (with-editor-set-process-filter process #'magit-process-filter)
