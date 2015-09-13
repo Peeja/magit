@@ -228,24 +228,20 @@ variable `magit-process-buffer-name-format'."
   (apply #'magit-call-process magit-git-executable
          (magit-process-git-arguments args)))
 
-(defmacro magit-with-cygwin-noglob (&rest body)
-  "Add \"noglob\" to the \"CYGWIN\" and \"MSYS\" environment variables.
-See Bug#2246."
-  (declare (indent 0))
-  `(let ((process-environment process-environment))
-     (setenv "CYGWIN" (--if-let (getenv "CYGWIN")
-                          (concat it " noglob")
-                        "noglob"))
-     (setenv "MSYS" (--if-let (getenv "MSYS")
-                        (concat it " noglob")
-                      "noglob"))
-     ,@body))
+(defun magit-cygwin-noglob-env-vars ()
+  (mapcar (lambda (var)
+            (concat var "=" (--if-let (getenv var)
+                                (concat it " noglob")
+                              "noglob")))
+          '("CYGWIN" "MSYS")))
 
 (defun magit-process-file (&rest args)
   "Process files synchronously in a separate process.
-Identical to `process-file' but wrap the call with
-`magit-with-cygwin-noglob'."
-  (magit-with-cygwin-noglob (apply #'process-file args)))
+Identical to `process-file' but temporarily enable Cygwin's
+\"noglob\" option during the call."
+  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
+                                     process-environment)))
+    (apply #'process-file args)))
 
 (defun magit-call-process (program &rest args)
   "Call PROGRAM synchronously in a separate process.
@@ -397,9 +393,11 @@ See `magit-start-process' for more information."
 
 (defun magit-start-file-process (&rest args)
   "Start a program in a subprocess.  Return the process object for it.
-Identical to `start-file-process' but wrap the call with
-`magit-with-cygwin-noglob'."
-  (magit-with-cygwin-noglob (apply #'start-file-process args)))
+Identical to `start-file-process' but temporarily enable Cygwin's
+\"noglob\" option during the call."
+  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
+                                     process-environment)))
+    (apply #'start-file-process args)))
 
 (defun magit-start-process (program &optional input &rest args)
   "Start PROGRAM, prepare for refresh, and return the process object.
