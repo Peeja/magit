@@ -228,6 +228,25 @@ variable `magit-process-buffer-name-format'."
   (apply #'magit-call-process magit-git-executable
          (magit-process-git-arguments args)))
 
+(defun magit-call-process (program &rest args)
+  "Call PROGRAM synchronously in a separate process.
+Process output goes into a new section in a buffer specified by
+variable `magit-process-buffer-name-format'."
+  (cl-destructuring-bind (process-buf . section)
+      (magit-process-setup program args)
+    (magit-process-finish
+     (let ((inhibit-read-only t))
+       (apply #'magit-process-file program nil process-buf nil args))
+     process-buf (current-buffer) default-directory section)))
+
+(defun magit-process-file (&rest args)
+  "Process files synchronously in a separate process.
+Identical to `process-file' but temporarily enable Cygwin's
+\"noglob\" option during the call."
+  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
+                                     process-environment)))
+    (apply #'process-file args)))
+
 (defun magit-cygwin-noglob-env-vars ()
   "Return a list of Cygwin \"noglob\" environment variables.
 
@@ -241,25 +260,6 @@ glob characters.  They should be added to a let-bound
                                 (concat it " noglob")
                               "noglob")))
           '("CYGWIN" "MSYS")))
-
-(defun magit-process-file (&rest args)
-  "Process files synchronously in a separate process.
-Identical to `process-file' but temporarily enable Cygwin's
-\"noglob\" option during the call."
-  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
-                                     process-environment)))
-    (apply #'process-file args)))
-
-(defun magit-call-process (program &rest args)
-  "Call PROGRAM synchronously in a separate process.
-Process output goes into a new section in a buffer specified by
-variable `magit-process-buffer-name-format'."
-  (cl-destructuring-bind (process-buf . section)
-      (magit-process-setup program args)
-    (magit-process-finish
-     (let ((inhibit-read-only t))
-       (apply #'magit-process-file program nil process-buf nil args))
-     process-buf (current-buffer) default-directory section)))
 
 (defun magit-run-git-with-input (input &rest args)
   "Call Git in a separate process.
@@ -398,14 +398,6 @@ See `magit-start-process' for more information."
   (apply #'magit-start-process magit-git-executable input
          (magit-process-git-arguments args)))
 
-(defun magit-start-file-process (&rest args)
-  "Start a program in a subprocess.  Return the process object for it.
-Identical to `start-file-process' but temporarily enable Cygwin's
-\"noglob\" option during the call."
-  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
-                                     process-environment)))
-    (apply #'start-file-process args)))
-
 (defun magit-start-process (program &optional input &rest args)
   "Start PROGRAM, prepare for refresh, and return the process object.
 
@@ -456,6 +448,14 @@ tracked in the current repository are reverted if
       (setf (magit-section-value section) process)
       (magit-process-display-buffer process)
       process)))
+
+(defun magit-start-file-process (&rest args)
+  "Start a program in a subprocess.  Return the process object for it.
+Identical to `start-file-process' but temporarily enable Cygwin's
+\"noglob\" option during the call."
+  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
+                                     process-environment)))
+    (apply #'start-file-process args)))
 
 ;;; Process Internals
 
