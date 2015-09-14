@@ -420,13 +420,16 @@ tracked in the current repository are reverted if
 `magit-revert-buffers' is non-nil."
   (cl-destructuring-bind (process-buf . section)
       (magit-process-setup program args)
-    (let* ((process-connection-type
-            ;; Don't use a pty, because it would set icrnl
-            ;; which would modify the input (issue #20).
-            (and (not input) magit-process-connection-type))
-           (process (apply #'magit-start-file-process
-                           (file-name-nondirectory program)
-                           process-buf program args)))
+    (let ((process
+           (let ((process-connection-type
+                  ;; Don't use a pty, because it would set icrnl
+                  ;; which would modify the input (issue #20).
+                  (and (not input) magit-process-connection-type))
+                 (process-environment (append (magit-cygwin-noglob-env-vars)
+                                              process-environment)))
+             (apply #'magit-start-file-process
+                    (file-name-nondirectory program)
+                    process-buf program args))))
       (with-editor-set-process-filter process #'magit-process-filter)
       (set-process-sentinel process #'magit-process-sentinel)
       (set-process-buffer   process process-buf)
@@ -448,14 +451,6 @@ tracked in the current repository are reverted if
       (setf (magit-section-value section) process)
       (magit-process-display-buffer process)
       process)))
-
-(defun magit-start-file-process (&rest args)
-  "Start a program in a subprocess.  Return the process object for it.
-Identical to `start-file-process' but temporarily enable Cygwin's
-\"noglob\" option during the call."
-  (let ((process-environment (append (magit-cygwin-noglob-env-vars)
-                                     process-environment)))
-    (apply #'start-file-process args)))
 
 ;;; Process Internals
 
